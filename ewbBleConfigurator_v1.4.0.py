@@ -285,19 +285,32 @@ async def prepare_connected_device(client):
     """
     Prepare eWB device for Remote Command Mode.
 
-    fac command must be sent after MODE=3.
-    Do not force BLE pairing here because Windows BLE pairing
-    may reset the current GATT session.
+    The eWB MODE characteristic requires authentication.
+    Therefore:
+    1. Keep the BLE connection.
+    2. Try pairing/authentication.
+    3. Continue only if GATT remains connected.
+    4. Enter MODE=3 for fac command.
     """
 
-    print("Preparing BLE connection...")
+    print("Preparing BLE authentication...")
 
     if not client.is_connected:
-        raise Exception("BLE connection lost before mode switch")
+        raise Exception("BLE connection lost before authentication")
 
-    await asyncio.sleep(1)
+    try:
+        print("Pairing attempt...")
+        result = await client.pair()
+        print(f"Pair result: {result}")
+    except Exception as e:
+        print(f"Pair warning: {e}")
 
-    print("BLE connection ready.")
+    await asyncio.sleep(2)
+
+    if not client.is_connected:
+        raise Exception("BLE disconnected after pairing")
+
+    print("BLE authenticated connection ready.")
 
     await set_mode(client, 3)
 
