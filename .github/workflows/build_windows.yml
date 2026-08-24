@@ -13,19 +13,19 @@ jobs:
 
     steps:
 
-      # 1. 拉取源码
+      # 拉取代码
       - name: Checkout repository
         uses: actions/checkout@v4
 
 
-      # 2. 安装 Python
+      # 安装 Python
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
 
-      # 3. 安装依赖
+      # 安装依赖
       - name: Install dependencies
         shell: pwsh
         run: |
@@ -33,7 +33,7 @@ jobs:
           pip install -r requirements.txt
 
 
-      # 4. 检查 Python 环境
+      # 查看环境
       - name: Check Python environment
         shell: pwsh
         run: |
@@ -41,52 +41,68 @@ jobs:
           pip list
 
 
-      # 5. 检查 Bleak
+      # 检查 Bleak 是否可导入
       - name: Check Bleak installation
         shell: pwsh
         run: |
-          python -c "import bleak; print('Bleak OK:', bleak.__version__)"
+          python -c "import bleak; print('Bleak import OK')"
 
 
-      # 6. 检查源码文件
+      # 检查源码
       - name: Check source file
         shell: pwsh
         run: |
+
           if (!(Test-Path "ewbBleConfigurator_v1.4.0.py")) {
-              Write-Error "Source file ewbBleConfigurator_v1.4.0.py not found"
+
+              Write-Error "Cannot find ewbBleConfigurator_v1.4.0.py"
+
               exit 1
+
           }
 
-          Write-Host "Source file found"
+          Write-Host "Source file OK"
 
 
-      # 7. PyInstaller生成EXE
+      # 使用 PyInstaller 编译 EXE
       - name: Build EXE
         shell: pwsh
         run: |
+
           pyinstaller `
             --onefile `
             --console `
             --clean `
             --name ewbBleConfigurator_v1.4.0 `
+            --hidden-import bleak `
+            --hidden-import bleak.backends.winrt `
+            --hidden-import bleak.backends.winrt.client `
+            --hidden-import bleak.backends.winrt.scanner `
             ewbBleConfigurator_v1.4.0.py
 
 
-      # 8. 检查生成结果
+      # 检查 EXE
       - name: Verify EXE
         shell: pwsh
         run: |
+
           if (!(Test-Path "dist/ewbBleConfigurator_v1.4.0.exe")) {
-              Write-Error "EXE build failed"
+
+              Write-Error "EXE was not generated"
+
               exit 1
+
           }
+
 
           Get-Item "dist/ewbBleConfigurator_v1.4.0.exe"
 
 
-      # 9. 上传EXE
+      # 上传EXE
       - name: Upload EXE Artifact
         uses: actions/upload-artifact@v4
         with:
+
           name: ewbBleConfigurator_v1.4.0_Win64
+
           path: dist/ewbBleConfigurator_v1.4.0.exe
