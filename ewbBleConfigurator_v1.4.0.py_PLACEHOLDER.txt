@@ -1,0 +1,7 @@
+请把你的最终 Python 源码文件改名为：
+
+ewbBleConfigurator_v1.4.0.py
+
+并放在这里。
+
+GitHub Actions 会自动编译。
