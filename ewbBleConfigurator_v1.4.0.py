@@ -10,7 +10,7 @@ from bleak import BleakScanner, BleakClient
 SERVICE_UUID = "331a36f5-2459-45ea-9d95-6142f0c4b307"
 WRITE_UUID = "a9da6040-0823-4995-94ec-9ce41ca28833"  # Rx: for sending commands/data
 NOTIFY_UUID = "a73e9a10-628f-4494-a099-12efaf72258f"  # Tx: for receiving notifications/data
-MODE_UUID = "75a9f022-af03-4e41-b4bc-9de90a47d50b"  # Stream Mode characteristic UUID
+MODE_UUID = "75a9f022-af03-4e41-b4bc-9de90a47d50b"  # eWB Remote Command / Stream Mode selector characteristic UUID
 
 REQUIRED_RESPONSE = "success"  # Keyword to consider command response successful
 
@@ -282,17 +282,32 @@ def normalize_bd_address(address):
 
 
 async def prepare_connected_device(client):
-    """Pair if possible, wait for GATT readiness, and set stream/command mode to 3."""
-    try:
-        await client.pair()
-    except Exception:
-        pass
+    """
+    Prepare eWB device for Remote Command Mode.
 
-    await asyncio.sleep(2)
+    fac command must be sent after MODE=3.
+    Do not force BLE pairing here because Windows BLE pairing
+    may reset the current GATT session.
+    """
+
+    print("Preparing BLE connection...")
+
+    if not client.is_connected:
+        raise Exception("BLE connection lost before mode switch")
+
+    await asyncio.sleep(1)
+
+    print("BLE connection ready.")
+
     await set_mode(client, 3)
 
-    value_bytes = await read_characteristic_bytes(client, MODE_UUID)
-    interpret_and_print_characteristic(MODE_UUID, value_bytes)
+    await asyncio.sleep(1)
+
+    try:
+        value_bytes = await read_characteristic_bytes(client, MODE_UUID)
+        interpret_and_print_characteristic(MODE_UUID, value_bytes)
+    except Exception as e:
+        print(f"Mode read warning: {e}")
 
 
 async def configure_ble(client):
@@ -468,13 +483,8 @@ async def run_operation(operation):
             except Exception as e:
                 print(f"Error during disconnect: {e}")
 
-            # Preserve the original behavior: unpair cleanly when supported.
-            try:
-                if hasattr(client, "unpair"):
-                    await client.unpair()
-                    print("Unpaired cleanly.")
-            except Exception as e:
-                print(f"Error during unpairing: {e}")
+            # Keep BLE bonding information.
+            # Do not call unpair automatically.
 
     return overall_result
 
@@ -576,7 +586,7 @@ Configuration command sequence:
 APP_TITLE_NAME = "ewbBleConfigurator"
 AUTHOR = "Salvatore Iannaccone"
 COMPANY = "FreeToMove-esolutions"
-VERSION = "1.1.0"
+VERSION = "1.4.0"
 
 
 def show_initial_screen():
