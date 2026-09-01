@@ -8,7 +8,6 @@ on:
 
 jobs:
   build:
-
     runs-on: windows-latest
 
     steps:
@@ -33,7 +32,7 @@ jobs:
           pip install -r requirements.txt
 
 
-      # 查看环境
+      # 查看 Python 环境
       - name: Check Python environment
         shell: pwsh
         run: |
@@ -41,68 +40,64 @@ jobs:
           pip list
 
 
-      # 检查 Bleak 是否可导入
+      # 检查 Bleak 是否可以正常导入
       - name: Check Bleak installation
         shell: pwsh
         run: |
           python -c "import bleak; print('Bleak import OK')"
+          python -c "import bleak_winrt; print('bleak-winrt import OK')"
 
 
-      # 检查源码
+      # 检查源码文件是否存在
       - name: Check source file
         shell: pwsh
         run: |
-
-          if (!(Test-Path "ewbBleConfigurator_v1.4.0.py")) {
-
-              Write-Error "Cannot find ewbBleConfigurator_v1.4.0.py"
-
+          if (!(Test-Path "ewbBleConfigurator_v1.7.0_SimpleAutoReset.py")) {
+              Write-Error "Cannot find ewbBleConfigurator_v1.7.0_SimpleAutoReset.py"
               exit 1
-
           }
 
           Write-Host "Source file OK"
+          Get-Item "ewbBleConfigurator_v1.7.0_SimpleAutoReset.py"
 
 
       # 使用 PyInstaller 编译 EXE
       - name: Build EXE
         shell: pwsh
         run: |
-
           pyinstaller `
             --onefile `
             --console `
             --clean `
-            --name ewbBleConfigurator_v1.4.0 `
+            --collect-all bleak `
+            --collect-all bleak_winrt `
             --hidden-import bleak `
             --hidden-import bleak.backends.winrt `
             --hidden-import bleak.backends.winrt.client `
             --hidden-import bleak.backends.winrt.scanner `
-            ewbBleConfigurator_v1.4.0.py
+            --hidden-import bleak_winrt `
+            --hidden-import bleak_winrt.windows.devices.bluetooth `
+            --hidden-import bleak_winrt.windows.devices.enumeration `
+            --name ewbBleConfigurator_v1.7.0_SimpleAutoReset `
+            ewbBleConfigurator_v1.7.0_SimpleAutoReset.py
 
 
-      # 检查 EXE
+      # 检查 EXE 是否成功生成
       - name: Verify EXE
         shell: pwsh
         run: |
-
-          if (!(Test-Path "dist/ewbBleConfigurator_v1.4.0.exe")) {
-
+          if (!(Test-Path "dist/ewbBleConfigurator_v1.7.0_SimpleAutoReset.exe")) {
               Write-Error "EXE was not generated"
-
               exit 1
-
           }
 
+          Write-Host "EXE generated successfully:"
+          Get-Item "dist/ewbBleConfigurator_v1.7.0_SimpleAutoReset.exe"
 
-          Get-Item "dist/ewbBleConfigurator_v1.4.0.exe"
 
-
-      # 上传EXE
+      # 上传 EXE
       - name: Upload EXE Artifact
         uses: actions/upload-artifact@v4
         with:
-
-          name: ewbBleConfigurator_v1.4.0_Win64
-
-          path: dist/ewbBleConfigurator_v1.4.0.exe
+          name: ewbBleConfigurator_v1.7.0_SimpleAutoReset_Win64
+          path: dist/ewbBleConfigurator_v1.7.0_SimpleAutoReset.exe
