@@ -23,7 +23,7 @@ if sys.platform == "win32":
 APP_TITLE_NAME = "ewbBleConfigurator"
 AUTHOR = "Salvatore Iannaccone"
 COMPANY = "FreeToMove-esolutions"
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 
 # Xpress Streaming Service
 SERVICE_UUID = "331a36f5-2459-45ea-9d95-6142f0c4b307"
@@ -40,7 +40,7 @@ BLE_PAIRING_PIN = "001234"
 REMOTE_COMMAND_PASSWORD: Optional[str] = None
 
 # Automatic scan / verification timing.
-INITIAL_SCAN_SECONDS = 6
+INITIAL_SCAN_SECONDS = 20
 VERIFY_TIMEOUT_SECONDS = 60
 VERIFY_SCAN_WINDOW_SECONDS = 4
 VERIFY_RETRY_DELAY_SECONDS = 1
@@ -143,14 +143,88 @@ def is_not_reset_name(name: Optional[str]) -> bool:
 # ============================================================
 
 async def scan_target_devices(timeout=INITIAL_SCAN_SECONDS):
+    """
+    Scan all BLE advertisements and display every discovered device.
+
+    Important:
+      On Windows, BLEDevice.name can be None or stale even when the
+      advertisement contains the correct local name. Therefore target
+      recognition uses AdvertisementData.local_name first, then falls
+      back to BLEDevice.name.
+    """
+    print()
+    print("=" * 58)
     print(f"Scanning BLE devices for {timeout} seconds...")
+    print("=" * 58)
 
-    devices = await BleakScanner.discover(timeout=timeout)
+    discovered = await BleakScanner.discover(
+        timeout=timeout,
+        return_adv=True,
+    )
 
+    all_devices = []
     targets = []
-    for device in devices:
-        if is_target_name(device.name):
-            targets.append(device)
+
+    for address, item in discovered.items():
+        device, advertisement = item
+
+        adv_name = getattr(advertisement, "local_name", None)
+        device_name = getattr(device, "name", None)
+        display_name = adv_name or device_name or "Unknown"
+        rssi = getattr(advertisement, "rssi", None)
+
+        all_devices.append(
+            (device, display_name, rssi)
+        )
+
+        if is_target_name(display_name):
+            targets.append(
+                (device, display_name)
+            )
+
+    # Sort only for display consistency. Targets are sorted below too.
+    all_devices.sort(
+        key=lambda x: (
+            (x[1] or "Unknown").upper(),
+            x[0].address.upper(),
+        )
+    )
+
+    print()
+    print(f"BLE devices found: {len(all_devices)}")
+    print("-" * 58)
+
+    if not all_devices:
+        print("No BLE devices were discovered.")
+    else:
+        for index, (device, display_name, rssi) in enumerate(all_devices):
+            if rssi is None:
+                rssi_text = ""
+            else:
+                rssi_text = f" | RSSI {rssi} dBm"
+
+            print(
+                f"[{index:02d}] {display_name} | "
+                f"{device.address}{rssi_text}"
+            )
+
+    print("-" * 58)
+
+    targets.sort(
+        key=lambda x: (
+            (x[1] or "Unknown").upper(),
+            x[0].address.upper(),
+        )
+    )
+
+    if targets:
+        print()
+        print(f"eWB/BGX target device(s) found: {len(targets)}")
+        for index, (device, display_name) in enumerate(targets):
+            print(
+                f"  TARGET [{index}] "
+                f"{display_name} | {device.address}"
+            )
 
     return targets
 
@@ -158,46 +232,48 @@ async def scan_target_devices(timeout=INITIAL_SCAN_SECONDS):
 async def auto_select_target_device():
     """
     Behavior:
-      - No target: retry / cancel.
+      - Display every BLE device discovered.
+      - No eWB/BGX target: allow rescan / exit.
       - One eWB/BGX target: auto-select it.
-      - Multiple targets: ask operator to choose.
+      - Multiple eWB/BGX targets: ask operator to choose.
+
+    Return:
+      (BLEDevice, resolved_name)
     """
     while True:
         targets = await scan_target_devices()
 
         if not targets:
+            print()
             print("No eWB/BGX device found.")
             choice = input(
-                "Press Enter to scan again, or type 'x' to exit: "
+                "Press Enter or type 'r' to scan again, "
+                "or type 'x' to exit: "
             ).strip().lower()
 
             if choice == "x":
                 return None
 
+            # Enter, r, or any other non-x input starts a new scan.
             continue
 
-        print()
-        print("Target BLE device(s) found:")
-
-        for i, dev in enumerate(targets):
-            print(
-                f"[{i}] {dev.name or 'Unknown'} | {dev.address}"
-            )
-
         if len(targets) == 1:
-            selected = targets[0]
+            selected_device, selected_name = targets[0]
+
             print()
             print(
                 f"Automatically selected: "
-                f"{selected.name} | {selected.address}"
+                f"{selected_name} | {selected_device.address}"
             )
-            return selected
+
+            return selected_device, selected_name
 
         print()
         while True:
             user_input = input(
-                "Multiple target devices found. "
-                "Select device index, or 'r' to rescan, 'x' to exit: "
+                "Multiple eWB/BGX devices found. "
+                "Select TARGET index, or 'r' to rescan, "
+                "'x' to exit: "
             ).strip().lower()
 
             if user_input == "x":
@@ -212,7 +288,7 @@ async def auto_select_target_device():
                 if 0 <= index < len(targets):
                     return targets[index]
 
-                print("Index out of range.")
+                print("Target index out of range.")
 
             except ValueError:
                 print("Invalid input.")
@@ -640,13 +716,13 @@ async def verify_same_mac_has_bgx_name(
 # ============================================================
 
 async def automatic_factory_reset():
-    selected_device = await auto_select_target_device()
+    selected = await auto_select_target_device()
 
-    if selected_device is None:
+    if selected is None:
         print("Operation cancelled.")
         return None
 
-    name = selected_device.name or "Unknown"
+    selected_device, name = selected
     address = selected_device.address
 
     print()
